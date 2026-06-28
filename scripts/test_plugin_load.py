@@ -9,9 +9,14 @@ from unittest.mock import MagicMock
 
 
 def find_package() -> Path | None:
-    """Walk up from this file to find openviking_extra/__init__.py.
+    """Walk up from THIS SCRIPT's location to find openviking_extra/__init__.py.
 
     Returns the package directory, or None if not found.
+
+    Critical: uses __file__ (the script's own location) as the start, not
+    cwd. In CI, cwd is set by GitHub Actions and may be the parent of the
+    repo dir (e.g. /home/runner/work/openviking-extra/ vs the actual
+    openviking-extra/ checkout). The script's location is reliable.
     """
     start = Path(__file__).resolve().parent
     # Check current dir first, then parents
@@ -19,10 +24,6 @@ def find_package() -> Path | None:
         pkg = candidate / "openviking_extra" / "__init__.py"
         if pkg.exists():
             return candidate / "openviking_extra"
-    # Last resort: rglob from cwd
-    for p in Path.cwd().rglob("__init__.py"):
-        if p.parent.name == "openviking_extra":
-            return p.parent
     return None
 
 
