@@ -148,3 +148,65 @@ print('Smoke test passed')
 - Memory `mem_7be449090808.md`: Plugin auto-wire surface (17+ integration points)
 - Memory `mem_40737a8c25ea.md`: Hermes core frozen + handler signature invariants
 - Memory `mem_a869489ad7aa.md`: Per-profile plugin visibility
+
+## Auto-improvement loop (v0.4.0+)
+
+Once installed, the plugin ships with a built-in telemetry-driven improvement loop:
+
+### Components
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  Hermes runtime                                                    │
+│   └── Plugin viking_* tool calls                                   │
+│        └── telemetry.py → post_tool_call hook                      │
+│             └── ~/.hermes/logs/openviking_extra/YYYY-MM-DD.jsonl   │
+│                                                                      │
+│  Cron (daily at 9 AM)                                              │
+│   └── ~/.hermes/scripts/openviking_extra_telemetry_daily.sh          │
+│        └── analyze_telemetry.py --brief --open-issues              │
+│             ├── Telegram brief (silent on no anomalies)            │
+│             └── GitHub issue (deduped, capped, tool-consolidated)  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Files in this repo
+
+- `skill/scripts/analyze_telemetry.py` — the analyzer (also at `~/.hermes/skills/devops/openviking-extra-telemetry/scripts/`)
+- `skill/SKILL.md` — companion skill for ad-hoc analysis
+- `cron/openviking_extra_telemetry_daily.sh` — the cron wrapper
+
+### How to enable
+
+1. **Opt-in telemetry** in `~/.hermes/config.yaml`:
+   ```yaml
+   plugins:
+     openviking_extra:
+       telemetry_enabled: true
+   ```
+
+2. **Cron is auto-registered** on plugin install. To verify:
+   ```bash
+   gh cron list 2>/dev/null || cat ~/.hermes/cron/jobs.json | jq '.jobs[] | select(.name=="openviking-extra-telemetry-daily")'
+   ```
+
+### What happens on anomalies
+
+When real anomalies are detected (error rate spike, latency regression, or recurring failure ≥3x):
+
+1. **Telegram** receives a 3-5 line brief listing the top 3 anomalies
+2. **GitHub** gets a new issue in [johnlam1968/openviking_extra](https://github.com/johnlam1968/openviking_extra/issues) labeled `auto-improvement` + `telemetry-anomaly`
+3. **Dedup**: same pattern won't re-fire within 7 days (configurable via `OPENVIKING_TELEMETRY_DEDUP_DAYS`)
+4. **Hard cap**: max 5 issues per cron run (configurable via `OPENVIKING_TELEMETRY_MAX_ISSUES`)
+
+### What you have to do
+
+Per your preference: **brief Telegram messages**. Read them when you have time. Close issues when the bug is fixed or if they're false positives.
+
+### Opting out
+
+Either disable telemetry (`plugins.openviking_extra.telemetry_enabled: false`) or pause the cron job:
+```bash
+gh cron pause openviking-extra-telemetry-daily  # if such command exists
+# Or manually: edit jobs.json and set enabled=false
+```

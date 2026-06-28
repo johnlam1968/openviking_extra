@@ -11,6 +11,22 @@ All notable changes to this project are documented in this file. Format follows
 - Streaming responses for viking_extract
 - Auto-rotation of JSONL logs (logrotate integration)
 
+## [0.4.0] - 2026-06-28
+
+### Added
+- **Auto-improvement loop** — daily cron job `openviking-extra-telemetry-daily` runs the analyzer at 9 AM, emits a Telegram-friendly brief on real anomalies, AND files GitHub issues for each unique tool/pattern.
+- **`--brief` flag** to `analyze_telemetry.py` — 3-5 line Telegram-ready message instead of the full report.
+- **`--open-issues` flag** — analyzer opens GitHub issues automatically when real anomalies are detected.
+- **`--dry-run`, `--max-issues`, `--dedup-days` flags** — control over auto-issue creation.
+- **Tool-level dedup** — multiple anomalies on the same tool (error rate + latency + recurring) collapse to ONE issue per cron run. Recurring failures dedup by pattern hash.
+- **Local state cache** (`~/.hermes/logs/openviking_extra/.recent_filings.jsonl`) — defensive dedup that works within seconds (no GitHub search index latency).
+- **Required labels** `auto-improvement` and `telemetry-anomaly` on the GitHub repo (auto-created on first run).
+- **Cron wrapper script** `~/.hermes/scripts/openviking_extra_telemetry_daily.sh` (per `cron-script-only` contract).
+
+### Changed
+- Analyzer exit code is now 1 ONLY for real anomalies (was 1 for any "💤 unused" warning). Silent ticks exit 0 cleanly.
+- Error/latency anomaly titles are deduplicated to `[auto] <tool>: anomaly detected` (no metric-specific suffix).
+
 ## [0.3.0] - 2026-06-28
 
 ### Added
