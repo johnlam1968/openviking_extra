@@ -80,15 +80,22 @@ jobs:
 
       - name: Plugin load test
         run: |
+          # Load as a proper package (matches how Hermes loads it) by putting
+          # the parent dir on sys.path and importing by package name.
+          cd \${{ github.workspace }}
           python3 -c "
-          import sys, importlib.util
+          import sys, os
           from unittest.mock import MagicMock
-          sys.path.insert(0, '\${{ github.workspace }}')
-          spec = importlib.util.spec_from_file_location('openviking_extra', '__init__.py')
-          m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+          # Ensure the plugin directory itself is on sys.path so 'openviking_extra'
+          # can be imported as a package (the `from . import` inside __init__.py
+          # requires this).
+          sys.path.insert(0, os.getcwd())
+          import openviking_extra
+
           ctx = MagicMock()
-          m.register(ctx)
-          print(f'Loaded plugin: {m.__version__}')
+          openviking_extra.register(ctx)
+          print(f'Loaded plugin: {openviking_extra.__version__}')
           print(f'Registered {ctx.register_tool.call_count} tools, {ctx.register_hook.call_count} hook(s)')
           assert ctx.register_tool.call_count == 6, f'Expected 6 tools, got {ctx.register_tool.call_count}'
           assert ctx.register_hook.call_count == 1, f'Expected 1 hook, got {ctx.register_hook.call_count}'
