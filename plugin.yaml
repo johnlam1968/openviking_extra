@@ -1,0 +1,14 @@
+name: openviking_extra
+version: 0.3.0
+description: "OpenViking extra tools — exposes 6 high-value endpoints NOT covered by the bundled memory provider plugin (which uses 11 of 114). Implements top community requests from NousResearch/hermes-agent#5627: relations/link, search/grep, search/glob, sessions/{id}/extract. Uses OPENVIKING_ENDPOINT + auth from env (same as the memory provider). Tools are gated on OpenViking server reachability via check_fn. v0.3 adds opt-in telemetry: post_tool_call hook writes JSONL to ~/.hermes/logs/openviking_extra/YYYY-MM-DD.jsonl when plugins.openviking_extra.telemetry_enabled=true or OPENVIKING_EXTRA_TELEMETRY=1."
+author: John + Hermes Agent
+kind: backend
+provides_tools:
+  - viking_write
+  - viking_link
+  - viking_grep
+  - viking_glob
+  - viking_extract
+  - viking_relation_graph
+requires_env:
+  - OPENVIKING_ENDPOINT

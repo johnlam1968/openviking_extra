@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-audit:
+    name: Audit handler signatures + plugin load
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install audit script
+        run: |
+          # The audit script is from the Hermes Agent skill — fetch from
+          # the bundled plugin authoring skill. For external CI, we
+          # inline a minimal version that checks the core contract.
+          mkdir -p ~/.hermes/skills/software-development/hermes-user-plugin-authoring/scripts/
+          cat > /tmp/audit.py <<'PYEOF'
+          """Minimal handler-signature audit (matches the audit in
+          ~/.hermes/skills/software-development/hermes-user-plugin-authoring/scripts/).
+          For CI we only check the core contract — extended checks live locally.
+          """
+          import ast
+          import sys
+          from pathlib import Path
+
+          def audit(tools_path: Path) -> int:
+              tree = ast.parse(tools_path.read_text())
+              handlers = []
+              for node in tree.body:
+                  if not isinstance(node, ast.FunctionDef):
+                      continue
+                  if node.name.startswith("_") and node.name != "__init__":
+                      continue
+                  if node.name in {"register", "check_requirements"}:
+                      continue
+                  handlers.append(node)
+
+              # Heuristic: handler-like = named in a _TOOLS tuple
+              in_tools = set()
+              for sub in ast.walk(tree):
+                  if isinstance(sub, ast.Tuple) and len(sub.elts) == 3:
+                      if isinstance(sub.elts[0], ast.Name):
+                          in_tools.add(sub.elts[0].id)
+
+              broken = 0
+              for h in handlers:
+                  if h.name not in in_tools:
+                      continue  # not a handler
+                  sig_ok = [p.arg for p in h.args.args] == ["args"] and h.args.vararg is None
+                  # Check first executable stmt (skip docstring)
+                  first_exec = h.body[1] if (h.body and isinstance(h.body[0], ast.Expr) and isinstance(h.body[0].value, ast.Constant)) else (h.body[0] if h.body else None)
+                  defensive = False
+                  if isinstance(first_exec, ast.If):
+                      src = ast.unparse(first_exec.test)
+                      defensive = "isinstance(args, dict)" in src
+                  src = ast.unparse(h)
+                  returns_json = "json.dumps" in src
+                  errors_safe = '{"error"' in src or "json.dumps" in src
+                  status = "✓" if (sig_ok and defensive and returns_json and errors_safe) else "✗"
+                  if status == "✗":
+                      broken += 1
+                  print(f"  {status} {h.name}{ast.unparse(h.args)}")
+              return 1 if broken else 0
+
+          if __name__ == "__main__":
+              rc = audit(Path("tools.py"))
+              sys.exit(rc)
+          PYEOF
+          python3 /tmp/audit.py
+
+      - name: Plugin load test
+        run: |
+          python3 -c "
+          import sys, importlib.util
+          from unittest.mock import MagicMock
+          sys.path.insert(0, '\${{ github.workspace }}')
+          spec = importlib.util.spec_from_file_location('openviking_extra', '__init__.py')
+          m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          ctx = MagicMock()
+          m.register(ctx)
+          print(f'Loaded plugin: {m.__version__}')
+          print(f'Registered {ctx.register_tool.call_count} tools, {ctx.register_hook.call_count} hook(s)')
+          assert ctx.register_tool.call_count == 6, f'Expected 6 tools, got {ctx.register_tool.call_count}'
+          assert ctx.register_hook.call_count == 1, f'Expected 1 hook, got {ctx.register_hook.call_count}'
+          print('✓ Plugin loads correctly')
+          "
+
+  version-consistency:
+    name: Verify version sync (plugin.yaml ↔ CHANGELOG)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version consistency
+        run: |
+          VERSION=$(grep '^version:' plugin.yaml | head -1 | awk '{print $2}')
+          echo "Plugin version: $VERSION"
+          if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
+            echo "✗ CHANGELOG.md missing entry for version $VERSION"
+            exit 1
+          fi
+          echo "✓ CHANGELOG.md has entry for $VERSION"

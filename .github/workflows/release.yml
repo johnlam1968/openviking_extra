@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Cut GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Verify tag matches plugin.yaml
+        run: |
+          PLUGIN_VERSION=$(grep '^version:' plugin.yaml | head -1 | awk '{print $2}')
+          if [ "$PLUGIN_VERSION" != "${{ steps.version.outputs.version }}" ]; then
+            echo "✗ Tag v${{ steps.version.outputs.version }} doesn't match plugin.yaml version $PLUGIN_VERSION"
+            exit 1
+          fi
+          echo "✓ Tag matches plugin.yaml ($PLUGIN_VERSION)"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          body: |
+            ## Changes
+
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/v${{ steps.version.outputs.version }}/CHANGELOG.md) for full details.
+
+            ## Install
+
+            ```bash
+            git clone https://github.com/${{ github.repository }}.git
+            cd openviking-extra
+            cp -r . ~/.hermes/plugins/openviking_extra/
+            # For other profiles:
+            # cp -r . ~/.hermes/profiles/<profile>/plugins/openviking_extra/
+            # Then add 'openviking_extra' to that profile's plugins.enabled
+            # Finally restart your Hermes Agent gateway
+            ```
