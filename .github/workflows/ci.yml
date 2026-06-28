@@ -80,33 +80,9 @@ jobs:
 
       - name: Plugin load test
         run: |
-          # Test by importing as a package — the plugin needs to be importable
-          # as `openviking_extra` from a path that has its PARENT directory.
-          # We use Python's importlib with a custom finder to be explicit.
-          python3 -c "
-          import sys
-          from pathlib import Path
-          # Walk up to find the package directory (the one with __init__.py)
-          pkg_dir = None
-          for p in Path.cwd().rglob('__init__.py'):
-              if p.parent.name == 'openviking_extra':
-                  pkg_dir = p.parent
-                  break
-          if pkg_dir is None:
-              print('Could not find openviking_extra package')
-              sys.exit(1)
-          print(f'Found package at: {pkg_dir}')
-          sys.path.insert(0, str(pkg_dir.parent))
-          import openviking_extra
-          from unittest.mock import MagicMock
-          ctx = MagicMock()
-          openviking_extra.register(ctx)
-          print(f'Loaded: {openviking_extra.__version__}')
-          print(f'Tools: {ctx.register_tool.call_count}, Hooks: {ctx.register_hook.call_count}')
-          assert ctx.register_tool.call_count == 6
-          assert ctx.register_hook.call_count == 1
-          print('✓ Plugin loads correctly')
-          "
+          # Load as a proper package via a dedicated test script. Avoids
+          # bash/YAML escaping issues with multiline python -c "...".
+          python3 scripts/test_plugin_load.py
 
   version-consistency:
     name: Verify version sync (plugin.yaml ↔ CHANGELOG)
